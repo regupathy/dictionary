@@ -33,10 +33,23 @@
 %%
 
 -spec add(Word::string(),Dictionary::dictionary()) -> NewDictionary::dictionary().
-add(Word,Dictionary) -> ok.
+add(Word,Dictionary) ->
+  case catch word_to_key(Word) of
 
+    {throw,Error} -> io:format("Not able to add word : ~p bz of : ~p",[Word,Error]),Dictionary;
 
+    Keys -> add(Keys,Dictionary,Word)
+  end.
 
+add([],Dict,_) -> Dict;
+add(_,Dict,Word) when length(Word) < 3 -> Dict; %% Words size should be greater than or equal to 3
+add(Keys,Dict,Word) -> add(Keys,Dict,Word,[]).
+
+add([H],[],Word,Acc) -> [{H,[Word],[]}|Acc];
+add([H],[{H,Words,NestedTree}|Rest],Word,Acc) -> Acc ++ [{H,[Word|Words],NestedTree}|Rest];
+add([H|Rest],[],Word,Acc) -> [{H,[],add(Rest,[],Word,[])}|Acc];
+add([H|Rest],[{H,Words,NestedTree}|Rest2],Word,Acc) -> Acc ++ [{H,Words,add(Rest,NestedTree,Word,[])}|Rest2];
+add(List,[UnMatch|Rest],Word,Acc) -> add(List,Rest,Word,[UnMatch|Acc]).
 
 %%========================================================================
 %%                   Search Words in Dictionary
@@ -44,11 +57,42 @@ add(Word,Dictionary) -> ok.
 -spec search(Keys::keys(),Dictionary::dictionary()) -> {ok,Result:: list(word())} | {error,Reason::string()|term()}.
 search(Number,Dictionary)when is_number(Number) ->
   case catch number_to_list_of_int(Number) of
-    {Type,Reason} -> {error,{Type,Reason}};
-    Keys ->  search(Keys,Dictionary)
-  end;
-search(Keys,Dictionary) -> ok.
+    {throw,Reason} -> {error,Reason};
+    Keys ->  search(Keys,Dictionary,Dictionary,[])
+  end.
 
+search([Key|[]],SubTree,_Dict,Acc) ->
+
+  case dict_take(Key,SubTree) of
+
+    not_found -> []; %% Simply Ignore because of No Entry in Dictionary for Key
+
+    %% No need to check the NestedTree
+    {match,{Key,[],_}} ->  []; %% Simply Ignore because of Empty word list in Dictionary for Key
+
+    {match,{Key,Words,_}} -> zip([Words|Acc],[])
+
+  end;
+
+search([Key|Rest],SubTree,Dict,Acc) ->
+
+  case dict_take(Key,SubTree) of
+
+    not_found ->  []; %% No Entry in Dictionary
+
+    {match,{Key,[],[]}} -> []; %% Empty entry in Dictionary
+
+    {match,{Key,[],NestedTree}} -> search(Rest,NestedTree,Dict,Acc); %% Incomplete Word
+
+    {match,{Key,Words,[]}} -> search(Rest,Dict,Dict,[Words|Acc]); %% No further continuation
+
+    {match,{Key,Words,NestedTree}} -> %% Has further continuation with set words
+
+      search(Rest,Dict,Dict,[Words|Acc]) %% carry forward with word list and start search from original Dict
+      ++
+      search(Rest,NestedTree,Dict,Acc)  %% search will carry forward with Nested Tree and not considering the word list
+
+  end.
 
 %%========================================================================
 %%                   Remove the Duplicate word in Dictionary
@@ -85,7 +129,8 @@ word_to_key(Word) -> lists:map(fun(X) -> char_to_number(X) end,Word).
 %%                   Local Functions
 %%========================================================================
 
-
+%% As per Assignment Instruction Each Character has mapped with a corresponding number
+-spec char_to_number(Char::char()) -> N::non_neg_integer().
 char_to_number(Char) when Char >= $A, Char =< $C -> 2;
 char_to_number(Char) when Char >= $a, Char =< $c -> 2;
 char_to_number(Char) when Char >= $d, Char =< $f -> 3;
@@ -105,9 +150,23 @@ char_to_number(Char) when Char >= $W, Char =< $Z -> 9;
 char_to_number(Char) -> throw({invalid_char,Char}).
 
 
-
+%% avoid adding number 1 and 0 to the list
+-spec add_only_if(Digit::non_neg_integer(),List::list()) -> NewList::list().
 add_only_if(0,_) -> throw({invalid_digit,0});
 add_only_if(1,_) -> throw({invalid_digit,1});
 add_only_if(Digit,List) -> [Digit|List].
 
 
+%% take Dictionary node by Key
+-spec dict_take(Key::key(),Dict::dictionary()) -> node().
+dict_take(_,[]) -> not_found;
+dict_take(Key,[{Key,Words,NestedTree}|_]) -> {match,{Key,Words,NestedTree}};
+dict_take(Key,[_|Rest]) -> dict_take(Key,Rest).
+
+
+%% Concatenating the 'list of list of String' into  'list of String'
+%% For Making output even more understandable
+-spec zip(Words::list(word()),Acc::list()) -> word().
+zip([],Acc) -> Acc;
+zip([H|Rest],[]) -> zip(Rest,lists:map(fun(X) -> [X] end,H));
+zip([H|Rest],Acc) -> zip(Rest,[[Y|X] || X <- Acc,Y <- H]).
