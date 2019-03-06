@@ -1,0 +1,8 @@
+%% coding: utf-8
+[{release,"dictionary_search_release","1","10.0",
+          [{kernel,"6.0","./lib/kernel-6.0"},
+           {stdlib,"3.5","./lib/stdlib-3.5"},
+           {dictionary_search,"0.1.0","./lib/dictionary_search-0.1.0"},
+           {sasl,"3.2","./lib/sasl-3.2"},
+           {runtime_tools,"1.13","./lib/runtime_tools-1.13"}],
+          permanent}].
