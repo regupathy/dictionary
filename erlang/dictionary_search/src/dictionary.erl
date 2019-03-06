@@ -41,10 +41,13 @@ add(Word,Dictionary) -> ok.
 %%========================================================================
 %%                   Search Words in Dictionary
 %%========================================================================
--spec search(Keys::keys(),Dictionary::dictionary()) -> Result:: list(word()).
+-spec search(Keys::keys(),Dictionary::dictionary()) -> {ok,Result:: list(word())} | {error,Reason::string()|term()}.
+search(Number,Dictionary)when is_number(Number) ->
+  case catch number_to_list_of_int(Number) of
+    {Type,Reason} -> {error,{Type,Reason}};
+    Keys ->  search(Keys,Dictionary)
+  end;
 search(Keys,Dictionary) -> ok.
-
-
 
 
 %%========================================================================
@@ -72,7 +75,7 @@ number_to_list_of_int(N,Acc) -> number_to_list_of_int(N div 10,add_only_if(N rem
 %% @doc
 %% convert word into keys
 %% Limitation :
-%%          Word's should be a English characters in both upper and lower cases.
+%%          Word should be formed only by English characters in both upper and lower cases.
 
 -spec word_to_key(Word::string()) -> Key::key().
 word_to_key(Word) -> lists:map(fun(X) -> char_to_number(X) end,Word).

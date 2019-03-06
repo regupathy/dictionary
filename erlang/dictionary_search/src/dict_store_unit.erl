@@ -12,7 +12,7 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/0]).
+-export([start_link/0,conversation/1]).
 
 %% gen_server callbacks
 -export([init/1,
@@ -24,13 +24,15 @@
 
 -define(SERVER, ?MODULE).
 
--record(state, {}).
+-record(state, {dictionary = []}).
 
 -type filePath() ::string().
 
 %%%===================================================================
 %%% API
 %%%===================================================================
+
+conversation(PhoneNumber) -> gen_server:call(?SERVER,{process,PhoneNumber}).
 
 %%--------------------------------------------------------------------
 %% @doc
@@ -64,8 +66,9 @@ start_link() ->
 init([FilePath]) ->
 %%  Loading Dictionary words from File say dictionary.txt
   io:format("Loading Dictionary is started......"),
-
-  {ok, #state{}}.
+  {TimeInMicroSeconds,Dict} = timer:tc(load,[FilePath,[]]),
+  io:format("Loading Dictionary is conmpleted with in ~p ms......",[TimeInMicroSeconds/1000]),
+  {ok, #state{dictionary = Dict}}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -82,6 +85,8 @@ init([FilePath]) ->
   {noreply, NewState :: #state{}, timeout() | hibernate} |
   {stop, Reason :: term(), Reply :: term(), NewState :: #state{}} |
   {stop, Reason :: term(), NewState :: #state{}}).
+handle_call({process,PhoneNumber}, _From, #state{dictionary = Dict}= State) ->
+  {reply, dictionary:search(PhoneNumber,Dict), State};
 handle_call(_Request, _From, State) ->
   {reply, ok, State}.
 
@@ -149,5 +154,20 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
--spec load(FilePath::filePath()) -> {ok,Dictionary::}
-load(FilePath) -> ok.
+-spec load(FilePath::filePath(),Dict::dictionary:dictionary()) -> {ok,Dictionary::dictionary:dictionary()}.
+load(FilePath,Dict) ->
+  case file:open(FilePath, [read]) of
+    {ok, Device}  -> get_all_lines(Device,Dict);
+
+    {error,enoent} -> io:format("File : ~p is not found ~n",[FilePath])
+  end.
+
+get_all_lines(Device,Dict) ->
+  case catch file:read_line(Device) of
+    eof  -> io:format("Loading Dictionary is done"),file:close(Device),Dict;
+
+    {ok,Word} -> get_all_lines(Device,dictionary:add(string:trim(Word,trailing),Dict));
+
+    {Type,Reason} -> io:format("Problem occured while Reading file that is ~p",[{Type,Reason}])
+
+  end.
