@@ -13,13 +13,9 @@
 -export([add/2,search/2, remove_duplicate/1]).
 
 -type key() :: number() | string() | atom().
-
 -type keys() :: list(key()).
-
 -type word() :: string() | list(string()).
-
 -type node() :: {Key::term(),Data::list(word()),ChildTree::node()}.
-
 -type dictionary() :: [node()].
 
 -export_type([dictionary/0,keys/0]).
@@ -82,7 +78,7 @@ search([Key|Rest],SubTree,Dict,Acc) ->
 %%========================================================================
 %%                   Remove the Duplicate word in Dictionary
 %%========================================================================
--spec remove_duplicate(Dictionary::dictionary()) -> NewDicitonary::dictionary().
+-spec remove_duplicate(Dictionary::dictionary()) -> NewDictionary::dictionary().
 remove_duplicate(Dict) -> remove_duplicate(Dict,[]).
 
 remove_duplicate([],Dict) -> Dict;
