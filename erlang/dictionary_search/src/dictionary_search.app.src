@@ -1,0 +1,20 @@
+%%%-------------------------------------------------------------------
+%%% @author dharan
+%%% @copyright (C) 2019, <COMPANY>
+%%% @doc
+%%%
+%%% @end
+%%% Created : 07. Mar 2019 5:52 AM
+%%%-------------------------------------------------------------------
+{application, dictionary_search, [
+  {description, ""},
+  {vsn, "1"},
+  {registered, []},
+  {applications, [
+    kernel,
+    stdlib
+  ]},
+  {modules,[dictionary,dict_store_unit]},
+  {mod, {dictionary_search_app, []}},
+  {env, [{dictionary_file,"../dictionary.txt"}]}
+]}.

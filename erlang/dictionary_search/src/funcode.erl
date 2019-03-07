@@ -2,7 +2,7 @@
 %%% @author regupathy
 %%% @copyright (C) 2019, <COMPANY>
 %%% @doc
-%%%   I have taken 3 hours of time to complete the full functionality of this module. Unfortunately i forget to add
+%%%   I have taken 3 hours time to complete the full functionality of this module. Unfortunately i forget to add
 %%%   this in repository. After two days, I was too busy with office work. Now i have created repository for both Erlang
 %%%   and Elixir.
 %%%

@@ -15,7 +15,6 @@
 -type key() :: number() | string() | atom().
 -type keys() :: list(key()).
 -type word() :: string() | list(string()).
--type node() :: {Key::term(),Data::list(word()),ChildTree::node()}.
 -type dictionary() :: [node()].
 
 -export_type([dictionary/0,keys/0]).
@@ -96,7 +95,7 @@ rm_dup(List) -> sets:to_list(sets:from_list(List)).
 %% convert phone number into list of digit
 %% Limitation :
 %%           phone number shouldn't contains 0 and 1.
--spec number_to_list_of_int(Number) -> list(integer()).
+-spec number_to_list_of_int(Number::non_neg_integer()) -> list(integer()).
 number_to_list_of_int(Number) -> number_to_list_of_int(Number,[]).
 number_to_list_of_int(0,Acc) -> Acc;
 number_to_list_of_int(N,Acc) -> number_to_list_of_int(N div 10,add_only_if(N rem 10 , Acc)).

@@ -12,7 +12,7 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/0,conversation/1,load_and_search/2]).
+-export([start_link/1,conversation/1,load_and_search/2]).
 
 %% gen_server callbacks
 -export([init/1,
@@ -31,76 +31,49 @@
 %%%===================================================================
 %%% API
 %%%===================================================================
--spec conversation(PhoneNumber::integer()) -> dictionary:word().
-conversation(PhoneNumber) -> gen_server:call(?SERVER,{process,PhoneNumber}).
-
-load_and_search(FileName,PhoneNumber) ->
-  gen_server:cast(?SERVER,clear_dictionary),
-  {TimeInMicroSeconds,Result} = gen_server:call(?SERVER,{load_and_search,FileName,PhoneNumber}),
+-spec conversation(PhoneNumber::integer()) -> {TimeInMilliSeconds::timer:time(),dictionary:word()}.
+conversation(PhoneNumber) ->
+  {TimeInMicroSeconds,Result} = timer:tc(gen_server,call,[?SERVER,{process,PhoneNumber}]),
   {TimeInMicroSeconds/1000,Result}.
 
--spec(start_link() ->
-  {ok, Pid :: pid()} | ignore | {error, Reason :: term()}).
-start_link() ->
-  gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
+-spec load_and_search(FileName::filePath(),PhoneNumber::integer())->{MilliSeconds::timer:time(),dictionary:word()}.
+load_and_search(FileName,PhoneNumber) ->
+  gen_server:cast(?SERVER,clear_dictionary),
+  {TimeInMicroSeconds,Result} = timer:tc(fun() -> gen_server:call(?SERVER,{load_and_search,FileName,PhoneNumber}) end),
+  {TimeInMicroSeconds/1000,Result}.
+
+-spec(start_link(FileName::filePath()) ->  {ok, Pid :: pid()} | ignore | {error, Reason :: term()}).
+start_link(FileName) ->  gen_server:start_link({local, ?SERVER}, ?MODULE, [FileName], []).
 
 %%%===================================================================
 %%% gen_server callbacks
 %%%===================================================================
 
--spec(init(Args :: term()) ->
-  {ok, State :: #state{}} | {ok, State :: #state{}, timeout() | hibernate} |
-  {stop, Reason :: term()} | ignore).
 init([FilePath]) ->
 %%  Loading Dictionary words from File say dictionary.txt
   io:format("Loading Dictionary is started......"),
-  {TimeInMicroSeconds,Dict} = timer:tc(load,[FilePath]),
+  {TimeInMicroSeconds,Dict} = timer:tc(fun() -> load(FilePath) end),
   io:format("Loading Dictionary is conmpleted with in ~p ms......",[TimeInMicroSeconds/1000]),
   {ok, #state{dictionary = Dict}}.
 
--spec(handle_call(Request :: term(), From :: {pid(), Tag :: term()},
-    State :: #state{}) ->
-  {reply, Reply :: term(), NewState :: #state{}} |
-  {reply, Reply :: term(), NewState :: #state{}, timeout() | hibernate} |
-  {noreply, NewState :: #state{}} |
-  {noreply, NewState :: #state{}, timeout() | hibernate} |
-  {stop, Reason :: term(), Reply :: term(), NewState :: #state{}} |
-  {stop, Reason :: term(), NewState :: #state{}}).
 handle_call({process,PhoneNumber}, _From, #state{dictionary = Dict}= State) ->
   {reply, dictionary:search(PhoneNumber,Dict), State};
-handle_call({load_and_search,FileName,PhoneNumber}, _From, State) ->
 
+handle_call({load_and_search,FileName,PhoneNumber}, _From, #state{dictionary = Dictionary} = State) ->
+  NewDictionary = custom_read(FileName,100,Dictionary),
+  {reply, dictionary:search(PhoneNumber,Dictionary), State#state{dictionary = NewDictionary}};
 
-  {reply, ok, State};
-handle_call(_Request, _From, State) ->
-  {reply, not_handled, State}.
+handle_call(_Request, _From, State) ->  {reply, not_handled, State}.
 
--spec(handle_cast(Request :: term(), State :: #state{}) ->
-  {noreply, NewState :: #state{}} |
-  {noreply, NewState :: #state{}, timeout() | hibernate} |
-  {stop, Reason :: term(), NewState :: #state{}}).
-handle_cast(clear_dictionary, State) ->
-  {noreply, State#state{dictionary = []}};
-handle_cast(_Request, State) ->
-  {noreply, State}.
+handle_cast(clear_dictionary, State) ->  {noreply, State#state{dictionary = []}};
 
--spec(handle_info(Info :: timeout() | term(), State :: #state{}) ->
-  {noreply, NewState :: #state{}} |
-  {noreply, NewState :: #state{}, timeout() | hibernate} |
-  {stop, Reason :: term(), NewState :: #state{}}).
-handle_info(_Info, State) ->
-  {noreply, State}.
+handle_cast(_Request, State) ->  {noreply, State}.
 
--spec(terminate(Reason :: (normal | shutdown | {shutdown, term()} | term()),
-    State :: #state{}) -> term()).
-terminate(_Reason, _State) ->
-  ok.
+handle_info(_Info, State) ->  {noreply, State}.
 
--spec(code_change(OldVsn :: term() | {down, term()}, State :: #state{},
-    Extra :: term()) ->
-  {ok, NewState :: #state{}} | {error, Reason :: term()}).
-code_change(_OldVsn, State, _Extra) ->
-  {ok, State}.
+terminate(_Reason, _State) ->  ok.
+
+code_change(_OldVsn, State, _Extra) ->  {ok, State}.
 
 %%%===================================================================
 %%% Internal functions
@@ -130,21 +103,55 @@ get_all_lines(Device,Dict) ->
     {Type,Reason} -> io:format("Problem occured while Reading file that is ~p",[{Type,Reason}])
   end.
 
--spec load(FilePath::filePath()) -> {ok,Dictionary::dictionary:dictionary()}.
-custom_read(FilePath,Reporter,Count) -> ok.
+%%%-------------------------------------------------------------------
+%%% Controlling Two process
+%%%-------------------------------------------------------------------
 
+-spec custom_read(FilePath::filePath(),Count::non_neg_integer(),Dict::dictionary:dictionary()) ->
+      {ok,Dictionary::dictionary:dictionary()}.
+custom_read(FilePath,Count,Dictionary) ->
+  case file:read_file(FilePath) of
+    {ok,Bin} ->
+      {LoopPid, Ref1} = spawn_monitor(fun()-> loop(Dictionary) end),
+      {SlicePid,Ref2} = spawn(fun() -> slice(Bin,Count,LoopPid) end),
+      receive
+        {ok,LoopPid,Dict} -> {ok,Dict};
+        {'DOWN', Ref1, process, LoopPid, Why} ->
+          io:format("Not able to complete the Dictionary loading operation due to : ~p~n ",[Why]),
+          exit(SlicePid),
+          {ok,Dictionary};
+        {'DOWN', Ref2, process, SlicePid, Why} ->
+          io:format("Not able to complete the Dictionary loading operation due to : ~p~n ",[Why]),
+          exit(LoopPid),
+          {ok,Dictionary}
+      end
+  end.
 
+%%%-------------------------------------------------------------------
+%%%  Adding Words to Dictionary
+%%%-------------------------------------------------------------------
 
+loop(Dictionary) -> loop(look(),Dictionary).
 
+loop({eof,[]},Dict) -> erlang:send(?SERVER, {ok,self(),Dict});
+loop({eof,Word},Dict) -> dictionary:add(Word,Dict);
+loop({continue,Word},Dict) -> loop(look(),dictionary:add(Word,Dict)).
 
-loop(Bin,Count) -> loop(Bin,<<>>,[]).
+look() -> receive X -> X after 100 -> {eof,[]} end.
 
-loop(<<"">>,<<>>,L) -> L;
-loop(<<"">>,Temp,L) -> [Temp|L];
-loop(<<"\r\n",Rest/binary>>,<<>>,L) -> loop(Rest,<<>>,L);
-loop(<<"\r\n",Rest/binary>>,Temp,L) -> loop(Rest,<<>>,[binary_to_list(Temp)|L]);
-loop(<<" ",Rest/binary>>,Temp,L) -> loop(Rest,Temp,L);
-loop(<<H/utf8,Rest/binary>>,Temp,L) -> loop(Rest,<<Temp/binary,H/utf8>>,L).
+%%%-------------------------------------------------------------------
+%%% Slice the Words from File Binary content
+%%%-------------------------------------------------------------------
+
+slice(Bin,Count,Reporter) -> slice(Bin,<<>>,[],0,{Count,Reporter}).
+
+slice(<<"">>,<<>>,L,_,{_,Reporter}) ->  Reporter ! {eof,L};
+slice(<<"">>,Temp,L,_,{_,Reporter}) ->  Reporter ! {eof,[Temp|L]};
+slice(<<"\r\n",Rest/binary>>,<<>>,L,Count,Repo) -> slice(Rest,<<>>,L,Count,Repo);
+slice(<<"\r\n",Rest/binary>>,Temp,L,Count,Repo) -> slice(Rest,<<>>,[binary_to_list(Temp)|L],Count+1,Repo);
+slice(<<" ",Rest/binary>>,Temp,L,Count,Repo) -> slice(Rest,Temp,L,Count,Repo);
+slice(Binary,Temp,L,Count,{Count,Repo}) -> erlang:send(Repo,{continue,L}),slice(Binary,Temp,[],0,{Count,Repo});
+slice(<<H/utf8,Rest/binary>>,Temp,L,Count,Repo) -> slice(Rest,<<Temp/binary,H/utf8>>,L,Count,Repo).
 
 
 
