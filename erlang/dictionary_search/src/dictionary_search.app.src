@@ -14,7 +14,7 @@
     kernel,
     stdlib
   ]},
-  {modules,[dictionary,dict_store_unit]},
+  {modules,[]},
   {mod, {dictionary_search_app, []}},
-  {env, [{dictionary_file,"../dictionary.txt"}]}
+  {env, [{dictionary_file,"../../dictionary.txt"}]}
 ]}.

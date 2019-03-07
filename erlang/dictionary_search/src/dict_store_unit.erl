@@ -12,7 +12,7 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/1,conversation/1,load_and_search/2]).
+-export([start_link/1,slice/3,load/1]).
 
 %% gen_server callbacks
 -export([init/1,
@@ -31,16 +31,6 @@
 %%%===================================================================
 %%% API
 %%%===================================================================
--spec conversation(PhoneNumber::integer()) -> {TimeInMilliSeconds::timer:time(),dictionary:word()}.
-conversation(PhoneNumber) ->
-  {TimeInMicroSeconds,Result} = timer:tc(gen_server,call,[?SERVER,{process,PhoneNumber}]),
-  {TimeInMicroSeconds/1000,Result}.
-
--spec load_and_search(FileName::filePath(),PhoneNumber::integer())->{MilliSeconds::timer:time(),dictionary:word()}.
-load_and_search(FileName,PhoneNumber) ->
-  gen_server:cast(?SERVER,clear_dictionary),
-  {TimeInMicroSeconds,Result} = timer:tc(fun() -> gen_server:call(?SERVER,{load_and_search,FileName,PhoneNumber}) end),
-  {TimeInMicroSeconds/1000,Result}.
 
 -spec(start_link(FileName::filePath()) ->  {ok, Pid :: pid()} | ignore | {error, Reason :: term()}).
 start_link(FileName) ->  gen_server:start_link({local, ?SERVER}, ?MODULE, [FileName], []).
@@ -51,10 +41,13 @@ start_link(FileName) ->  gen_server:start_link({local, ?SERVER}, ?MODULE, [FileN
 
 init([FilePath]) ->
 %%  Loading Dictionary words from File say dictionary.txt
-  io:format("Loading Dictionary is started......"),
+  io:format("Loading Dictionary is started......~n"),
   {TimeInMicroSeconds,Dict} = timer:tc(fun() -> load(FilePath) end),
-  io:format("Loading Dictionary is conmpleted with in ~p ms......",[TimeInMicroSeconds/1000]),
-  {ok, #state{dictionary = Dict}}.
+  case Dict of
+    {ok,[]} -> io:format("Loading Dictionary is not completed~n"),{ok, #state{dictionary = []}};
+    {ok,Dictionary} -> io:format("Loading Dictionary is completed with in ~p ms~n",[TimeInMicroSeconds/1000]),
+      {ok, #state{dictionary = Dictionary}}
+  end.
 
 handle_call({process,PhoneNumber}, _From, #state{dictionary = Dict}= State) ->
   {reply, dictionary:search(PhoneNumber,Dict), State};
@@ -85,44 +78,46 @@ code_change(_OldVsn, State, _Extra) ->  {ok, State}.
 %%    the given time bound(1000millisecond), The file:read_line/2 method itself taking time the average of 1050 ms
 %%    to complete their task.
 %%
-%% Resolution :-
+%% Resolution I made:-
 %%  1. create two processes one for reading and other for adding entry to Dictionary. both should happen concurrently.
 %%  2. create a custom steaming file reader to send portion of data to the Dictionary add operation.
 %%
+
 -spec load(FilePath::filePath()) -> {ok,Dictionary::dictionary:dictionary()}.
 load(FilePath) ->
   case file:open(FilePath, [read]) of
-    {ok, Device}  -> get_all_lines(Device,[]);
-    {error,enoent} -> io:format("File : ~p is not found ~n",[FilePath])
+    {ok, Device}  -> {ok,get_all_lines(Device,[])};
+    {error,Reason} -> io:format("Failed to read file : ~p due to :~p ~n",[FilePath,Reason]),{ok,[]}
   end.
 
 get_all_lines(Device,Dict) ->
   case catch file:read_line(Device) of
-    eof  -> io:format("Loading Dictionary is done"),file:close(Device),Dict;
+    eof  -> file:close(Device),dictionary:remove_duplicate(Dict);
     {ok,Word} -> get_all_lines(Device,dictionary:add(string:trim(Word,trailing),Dict));
-    {Type,Reason} -> io:format("Problem occured while Reading file that is ~p",[{Type,Reason}])
+    {Type,Reason} -> io:format("Problem occured while Reading file that is ~p~n",[{Type,Reason}])
   end.
 
 %%%-------------------------------------------------------------------
 %%% Controlling Two process
 %%%-------------------------------------------------------------------
-
+%% This approach got failed due to sending message to other process mailbox.
+%% it will occupy more memory of processes.
 -spec custom_read(FilePath::filePath(),Count::non_neg_integer(),Dict::dictionary:dictionary()) ->
       {ok,Dictionary::dictionary:dictionary()}.
 custom_read(FilePath,Count,Dictionary) ->
   case file:read_file(FilePath) of
     {ok,Bin} ->
       {LoopPid, Ref1} = spawn_monitor(fun()-> loop(Dictionary) end),
-      {SlicePid,Ref2} = spawn(fun() -> slice(Bin,Count,LoopPid) end),
+      {SlicePid,Ref2} = spawn_monitor(fun() -> slice(Bin,Count,LoopPid) end),
       receive
         {ok,LoopPid,Dict} -> {ok,Dict};
-        {'DOWN', Ref1, process, LoopPid, Why} ->
+        {'DOWN', Ref1, process, LoopPid, Why} when Why /= normal ->
           io:format("Not able to complete the Dictionary loading operation due to : ~p~n ",[Why]),
           exit(SlicePid),
           {ok,Dictionary};
-        {'DOWN', Ref2, process, SlicePid, Why} ->
+        {'DOWN', Ref2, process, SlicePid, Why} when Why /= normal ->
           io:format("Not able to complete the Dictionary loading operation due to : ~p~n ",[Why]),
-          exit(LoopPid),
+          if Why =/= normal -> exit(LoopPid); true -> ok end,
           {ok,Dictionary}
       end
   end.
@@ -134,10 +129,10 @@ custom_read(FilePath,Count,Dictionary) ->
 loop(Dictionary) -> loop(look(),Dictionary).
 
 loop({eof,[]},Dict) -> erlang:send(?SERVER, {ok,self(),Dict});
-loop({eof,Word},Dict) -> dictionary:add(Word,Dict);
-loop({continue,Word},Dict) -> loop(look(),dictionary:add(Word,Dict)).
+loop({eof,Words},Dict) -> lists:foldr(fun(Word,D) -> dictionary:add(Word,D) end,Dict,Words);
+loop({continue,Words},Dict) -> loop(look(),lists:foldr(fun(Word,D) -> dictionary:add(Word,D) end,Dict,Words)).
 
-look() -> receive X -> X after 100 -> {eof,[]} end.
+look() -> receive X -> X after 1000 -> {eof,[]} end.
 
 %%%-------------------------------------------------------------------
 %%% Slice the Words from File Binary content
@@ -147,12 +142,12 @@ slice(Bin,Count,Reporter) -> slice(Bin,<<>>,[],0,{Count,Reporter}).
 
 slice(<<"">>,<<>>,L,_,{_,Reporter}) ->  Reporter ! {eof,L};
 slice(<<"">>,Temp,L,_,{_,Reporter}) ->  Reporter ! {eof,[Temp|L]};
-slice(<<"\r\n",Rest/binary>>,<<>>,L,Count,Repo) -> slice(Rest,<<>>,L,Count,Repo);
-slice(<<"\r\n",Rest/binary>>,Temp,L,Count,Repo) -> slice(Rest,<<>>,[binary_to_list(Temp)|L],Count+1,Repo);
+slice(<<"\n",Rest/binary>>,<<>>,L,Count,Repo) -> slice(Rest,<<>>,L,Count,Repo);
+slice(<<"\n",Rest/binary>>,Temp,L,Count,Repo) -> slice(Rest,<<>>,[binary_to_list(Temp)|L],Count+1,Repo);
 slice(<<" ",Rest/binary>>,Temp,L,Count,Repo) -> slice(Rest,Temp,L,Count,Repo);
+slice(<<"\r",Rest/binary>>,Temp,L,Count,Repo) -> slice(Rest,Temp,L,Count,Repo);
 slice(Binary,Temp,L,Count,{Count,Repo}) -> erlang:send(Repo,{continue,L}),slice(Binary,Temp,[],0,{Count,Repo});
 slice(<<H/utf8,Rest/binary>>,Temp,L,Count,Repo) -> slice(Rest,<<Temp/binary,H/utf8>>,L,Count,Repo).
-
 
 
 

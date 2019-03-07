@@ -11,6 +11,7 @@
 
 %% API
 -export([add/2,search/2, remove_duplicate/1]).
+-export([number_to_list_of_int/1]).
 
 -type key() :: number() | string() | atom().
 -type keys() :: list(key()).
@@ -50,8 +51,8 @@ add(List,[UnMatch|Rest],Word,Acc) -> add(List,Rest,Word,[UnMatch|Acc]).
 -spec search(Keys::keys(),Dictionary::dictionary()) -> {ok,Result:: list(word())} | {error,Reason::string()|term()}.
 search(Number,Dictionary)when is_number(Number) ->
   case catch number_to_list_of_int(Number) of
-    {throw,Reason} -> {error,Reason};
-    Keys ->  search(Keys,Dictionary,Dictionary,[])
+    {invalid_digit,N} -> {error,{invalid_digit,N}};
+    Keys -> search(Keys,Dictionary,Dictionary,[])
   end.
 
 search([Key|[]],SubTree,_Dict,Acc) ->
