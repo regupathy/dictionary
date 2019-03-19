@@ -7,19 +7,19 @@ defmodule Dictionary do
 
 """
 
-  def add(map,[],_), do:  map
-  def add(map,[lastKey],word), do: Map.update(map,lastKey,treeNode(lastKey),fn x -> update_val(x,word) end)
-  def add(map,[key|rest],word), do: Map.update(map,key,treeNode(key),
-                                                       fn x -> IO.puts "s", x.inner |> add(rest,word) |> assign(x,:inner)  end)
+  import DictTree
 
 
 
-  defp assign(newValue,map,position), do: IO.puts "asad asdad #{ inspect newValue}", Map.put(map,position,newValue)
+  def add(tree,[],_), do:  tree
+  def add(tree,[lastKey],word), do: addNode(tree,lastKey,word)
+  def add(tree,[key|rest],word) do
+    dictTree = getNode(tree,key)
+               dictTree |> DictNode.getSubTree |> add(rest,word)
+                                     |> update_subTree(dictTree) |> replace(tree,key)
+  end
 
-  defp update_val(map,word), do: map.put(map,:val,map.get(map,:val) |> MapSet.put(word))
-
-  defp treeNode(key), do: Map.new(key: key,val: MapSet.new(),inner: Map.new())
-
+  defp update_subTree(subTree,dictNode), do: %{dictNode | subTree: subTree}
 
 
 
