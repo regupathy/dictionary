@@ -11,4 +11,10 @@ defmodule DictNode do
 
   def getSubTree(dictNode), do: dictNode.subTree
 
+  def getWord(dictNode), do: dictNode[:word]
+
+  def isEmptyNode(dictNode), do: dictNode[:word] == [] and dictNode[:subTree] == %{}
+
+  def isPerfectNode(dictNode), do: dictNode[:word] != [] and dictNode[:subTree] != %{}
+
 end
