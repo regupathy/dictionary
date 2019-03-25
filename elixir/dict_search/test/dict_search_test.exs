@@ -10,8 +10,8 @@ defmodule DictSearchTest do
   end
 
   test "dictionary search for 6686787825", _context do
-    {_time,words} = :timer.tc(fn-> Dictionary.search 6686787825 end )
-#     assert  div(time,1000) < 1000
+    {time,words} = :timer.tc(fn-> Dictionary.search 6686787825 end )
+     assert  div(time,1000) < 1000
      IO.puts("Dictionary search for 6686787825  : \n #{inspect words} \n")
      assert ["MOTORTRUCK"] == hd(words)
      assert( Enum.member?(words,["NOUNS", "USUAL"]))
@@ -20,8 +20,8 @@ defmodule DictSearchTest do
   end
 
   test "dictionary search for 2282668687", _context do
-    {_time,words} = :timer.tc(fn-> Dictionary.search 2282668687 end )
-#    assert  div(time,1000) < 1000
+    {time,words} = :timer.tc(fn-> Dictionary.search 2282668687 end )
+    assert  div(time,1000) < 1000
     IO.puts("Dictionary search for 2282668687  : \n #{inspect words} \n")
     assert(["CATAMOUNTS"] == hd(words))
     assert( Enum.member?(words,["ACTA", "MOUNTS"]))

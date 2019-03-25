@@ -21,7 +21,10 @@ defmodule Dictionary do
 
   def update(word), do: Agent.update( :dict,fn(tree) -> add(tree,gen_key(word),word) end)
 
-#  def update_list(words), do: Agent.update( :dict,fn(tree) -> :lists.foldl() end)
+  def update_list(words) do
+    newDictTree = List.foldl(words,getDict(),fn word,tree -> add(tree,gen_key(word),word)  end)
+    Agent.update(:dict,fn _ -> newDictTree end)
+  end
 
   ####################################################################
   #
@@ -33,7 +36,7 @@ defmodule Dictionary do
         Dictionary search is performed through given number
   """
   def search(number), do: search(number,getDict()) |> Enum.reverse
-  def search(number,tree), do: number_to_digits(number) |> search(tree,[])
+  def search(number,tree), do: number_to_digits(number) |> search(tree,[],tree)
 
   def search_timing(number) do
     {time,result} = :timer.tc(fn -> search(number) end)
@@ -56,7 +59,7 @@ defmodule Dictionary do
   def load(path) do
     fun = fn ->
       case File.read(path) do
-        {:ok,content} -> parse(content,<<>>,[]) |> fn(list) -> for x <- list, do: update(x)  end.()
+        {:ok,content} -> parse(content,<<>>,[]) |> update_list
         _ -> IO.puts("Error in loading File #{path}")
       end
     end
@@ -70,20 +73,20 @@ defmodule Dictionary do
   #
   ####################################################################
 
-  defp search([digit|[]],tree,acc), do: DictTree.takeNode(digit,tree) |> search1([],acc)
-  defp search([digit|rest],tree,acc), do: DictTree.takeNode(digit,tree) |> search1(rest,acc)
+  defp search([digit|[]],tree,acc,dictTree), do: DictTree.takeNode(digit,tree) |> search1([],acc,dictTree)
+  defp search([digit|rest],tree,acc,dictTree), do: DictTree.takeNode(digit,tree) |> search1(rest,acc,dictTree)
 
-  defp search1(nil,[],_acc), do: []
-  defp search1(dictNode,[],acc), do: dictNode |> DictNode.getWord |> fn [] -> [];words -> zip([words|acc]) end.()
-  defp search1(nil,_rest,_acc), do: []
-  defp search1(dictNode,rest,acc), do: dictNode |> DictNode.isEmptyNode()
-                                       |> fn true -> []; false -> search2(dictNode,rest,acc) end.()
-  defp search2(dictNode,keys,acc), do: dictNode |> DictNode.isPerfectNode()
-                                       |> fn true -> search(keys,getDict(),[DictNode.getWord(dictNode)|acc])
-                                                     ++ search(keys,DictNode.getSubTree(dictNode),acc)
-                                            false -> search3(dictNode,keys,acc)  end.()
-  defp search3(dictNode,keys,acc), do: DictNode.getWord(dictNode) |> fn [] -> search(keys,DictNode.getSubTree(dictNode),acc)
-                                                                       words -> search(keys,getDict(),[words|acc]) end.()
+  defp search1(nil,[],_acc,_), do: []
+  defp search1(dictNode,[],acc,_), do: dictNode |> DictNode.getWord |> fn [] -> [];words -> zip([words|acc]) end.()
+  defp search1(nil,_rest,_acc,_), do: []
+  defp search1(dictNode,rest,acc,dictTree), do: dictNode |> DictNode.isEmptyNode()
+                                       |> fn true -> []; false -> search2(dictNode,rest,acc,dictTree) end.()
+  defp search2(dictNode,keys,acc,dictTree), do: dictNode |> DictNode.isPerfectNode()
+                                       |> fn true -> search(keys,dictTree,[DictNode.getWord(dictNode)|acc],dictTree)
+                                                     ++ search(keys,DictNode.getSubTree(dictNode),acc,dictTree)
+                                            false -> search3(dictNode,keys,acc,dictTree)  end.()
+  defp search3(dictNode,keys,acc,dictTree), do: DictNode.getWord(dictNode) |> fn [] -> search(keys,DictNode.getSubTree(dictNode),acc,dictTree)
+                                                                       words -> search(keys,dictTree,[words|acc],dictTree) end.()
 
 
 

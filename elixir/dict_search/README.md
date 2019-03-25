@@ -28,7 +28,7 @@
 To know Execution Time taken for search
 
     iex(4)> Dictionary.search_timing 6686787825
-    Time taken for search 1298.012 ms
+    Time taken for search 208.447 ms
     
     [
       ["MOTORTRUCK"],
